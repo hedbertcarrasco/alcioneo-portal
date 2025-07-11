@@ -9,9 +9,8 @@ sys.path.insert(0, src_path)
 # Import the Dash app
 from app import app
 
-# Create the serverless handler
+# Get the Flask server
 server = app.server
 
-# This is the Vercel serverless function handler
-def handler(request, response):
-    return server(request, response)
+# Export the app for Vercel
+app = server
