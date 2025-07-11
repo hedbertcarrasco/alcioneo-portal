@@ -28,10 +28,24 @@ def rate_limit(calls_per_minute=5):
 
 
 class CacheManager:
-    def __init__(self, cache_dir="cache", ttl_minutes=5):
+    def __init__(self, cache_dir=None, ttl_minutes=5):
+        # Use /tmp in Vercel or serverless environments
+        if cache_dir is None:
+            if os.environ.get('VERCEL'):
+                cache_dir = '/tmp/cache'
+            else:
+                cache_dir = 'cache'
+        
         self.cache_dir = cache_dir
         self.ttl_minutes = ttl_minutes
-        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Try to create cache directory, but don't fail if we can't
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+        except OSError:
+            # If we can't create the directory (e.g., read-only filesystem),
+            # we'll just disable caching
+            self.cache_dir = None
     
     def _get_cache_key(self, url, params):
         """Generate a unique cache key from URL and params"""
@@ -40,24 +54,38 @@ class CacheManager:
     
     def get(self, url, params):
         """Get cached data if available and not expired"""
+        if self.cache_dir is None:
+            return None  # Caching disabled
+            
         cache_key = self._get_cache_key(url, params)
         cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
         
-        if os.path.exists(cache_file):
-            # Check if cache is still valid
-            file_time = datetime.fromtimestamp(os.path.getmtime(cache_file))
-            if datetime.now() - file_time < timedelta(minutes=self.ttl_minutes):
-                with open(cache_file, 'r') as f:
-                    return json.load(f)
+        try:
+            if os.path.exists(cache_file):
+                # Check if cache is still valid
+                file_time = datetime.fromtimestamp(os.path.getmtime(cache_file))
+                if datetime.now() - file_time < timedelta(minutes=self.ttl_minutes):
+                    with open(cache_file, 'r') as f:
+                        return json.load(f)
+        except Exception:
+            # If any error occurs reading cache, just return None
+            pass
         return None
     
     def set(self, url, params, data):
         """Save data to cache"""
+        if self.cache_dir is None:
+            return  # Caching disabled
+            
         cache_key = self._get_cache_key(url, params)
         cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
         
-        with open(cache_file, 'w') as f:
-            json.dump(data, f)
+        try:
+            with open(cache_file, 'w') as f:
+                json.dump(data, f)
+        except Exception:
+            # If we can't write to cache, just continue without caching
+            pass
 
 
 class PolygonClient:
@@ -257,8 +285,20 @@ class PolygonClient:
     
     def clear_cache(self):
         """Clear all cached data"""
-        cache_files = os.listdir(self.cache.cache_dir)
-        for file in cache_files:
-            if file.endswith('.json'):
-                os.remove(os.path.join(self.cache.cache_dir, file))
-        print(f"Cleared {len(cache_files)} cache files")
+        if self.cache.cache_dir is None:
+            print("Cache is disabled")
+            return
+            
+        try:
+            cache_files = os.listdir(self.cache.cache_dir)
+            cleared = 0
+            for file in cache_files:
+                if file.endswith('.json'):
+                    try:
+                        os.remove(os.path.join(self.cache.cache_dir, file))
+                        cleared += 1
+                    except Exception:
+                        pass
+            print(f"Cleared {cleared} cache files")
+        except Exception:
+            print("Unable to clear cache")
