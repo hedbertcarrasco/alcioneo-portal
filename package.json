@@ -1,0 +1,12 @@
+{
+  "name": "alcioneo-mvp",
+  "version": "1.0.0",
+  "description": "AlcioNEO MVP - Trading Dashboard",
+  "scripts": {
+    "dev": "cd src && python app.py",
+    "build": "echo 'No build step required for Python'"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
